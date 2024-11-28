@@ -1,0 +1,493 @@
+---
+title: "L04 Feature Engineering I"
+subtitle: "Data Science 3 with R (STAT 301-3)"
+author: "Allison Kane"
+pagetitle: "L04 Allison Kane"
+date: today
+
+format:
+  html:
+    toc: true
+    toc-depth: 4
+    toc-location: left
+    embed-resources: true
+    code-fold: false
+    link-external-newwindow: true
+
+execute:
+  warning: false
+  
+from: markdown+emoji
+reference-location: margin
+citation-location: margin
+---
+
+
+::: {.callout-tip icon=false}
+
+## Github Repo Link
+
+[Allison Repo Link](https://github.com/stat301-3-2024-spring/L04-feat-eng-1-akane2460.git)
+
+:::
+
+
+## Overview
+
+The goal of this lab is to (1) provide an in-depth understanding of errors/warnings related to factor variables, (2) demonstrate different imputation techniques, and (3) introduce a new model type: neural networks.
+
+
+## Exercises
+
+We will be using a modification of the `adult` dataset^[Kaggle Uber & Lyft Dataset ([see website](https://www.kaggle.com/datasets/uciml/adult-census-income/data))]. The dataset has been pre-split into a training and testing dataset found in the `\data` directory. Take a moment to read the variable definitions in `adult_codebook.txt`.
+
+
+::: {.callout-note icon="false"}
+## Prediction goal
+
+The objective is to predict whether and individual earns and `income` of more than 50k (1) or less than 50k (0).
+
+:::
+
+### Exercise 1
+
+#### Task 1
+
+The data has been pre-split for you, but there still some initial work to be done. Working in `01_initial_setup.R`, load the training data (`adult_train.csv`). You'll need to convert character variables to factors and  set the reference level of the outcome variable, `income`, to be `1`. Then create resamples by folding the training data using repeated V-fold cross-validation (10 folds & 3 repeats). Use stratified sampling when folding the data. Be sure to write out the training set and folds as `.rda` files.
+
+::: {.callout-tip icon="false"}
+## Solution
+
+```{r}
+#| label: ex 1 task 1
+#| eval: false
+
+adult_train <- adult_train |> 
+  mutate(
+    workclass = as.factor(workclass),
+    education = as.factor(education),
+    name = as.factor(name),
+    marital_status = as.factor(marital_status),
+    occupation = as.factor(occupation),
+    relationship = as.factor(relationship),
+    race = as.factor(race),
+    sex = as.factor(sex),
+    native_country = as.factor(native_country),
+    income = as.factor(income),
+    income = relevel(income, ref = "1")
+  )
+ 
+# resamples: v-fold
+adult_folds <- adult_train |>
+  vfold_cv(v = 10, repeats = 3, strata = income)
+
+```
+
+
+:::
+
+#### Task 2
+
+Using the `naniar` package, explore the nature of missingness in the training data. Use both graphics and summary tables. Display this work.
+
+::: {.callout-tip icon="false"}
+## Solution
+
+![Missing Variables in `adult_train`](results/missing_variables_adult_train_plot.png)
+
+|variable       | n_miss|  pct_miss|
+|:--------------|------:|---------:|
+|workclass      |    217| 6.3487420|
+|occupation     |    217| 6.3487420|
+|native_country |     67| 1.9602106|
+|education_num  |     27| 0.7899356|
+|hours_per_week |     12| 0.3510825|
+|age            |      0| 0.0000000|
+|fnlwgt         |      0| 0.0000000|
+|education      |      0| 0.0000000|
+|name           |      0| 0.0000000|
+|marital_status |      0| 0.0000000|
+|relationship   |      0| 0.0000000|
+|race           |      0| 0.0000000|
+|sex            |      0| 0.0000000|
+|capital_gain   |      0| 0.0000000|
+|capital_loss   |      0| 0.0000000|
+|income         |      0| 0.0000000|
+
+:::
+
+Above what “line-of-dignity” threshold is too much data imputation for a predictor/column?
+
+::: {.callout-tip icon="false"}
+## Solution
+
+Line of dignity indicates the point at which imputing for missing data in a column becomes unreliable. If missingness makes up half or more of the column, that could cause bias and issues with the developed models. This can also depend on the nature of the data, if these missing values are systemic vs. random throughout the dataset.
+
+:::
+
+Given the above information, how would you suggest handling the missingness that is present? 
+
+::: {.callout-tip icon="false"}
+## Solution
+
+In this case, the missingness in the dataset is not substantial enough to reach the line of dignity threshold. `workclass` and `occupation` both have the highest rate of missingness in the dataset of approximately 6.35%. 
+
+:::
+
+Name at least 3 **simple** (non-model) based imputation steps that handle missingness issues. Indicate whether each step function can handle numeric, categorical, or both variable types.
+
+::: {.callout-tip icon="false"}
+## Solution
+
+Mean/Median imputation is a non-model based imputation that could handle missingness. This is better for numeric variables. This imputes the mean or median of the column in the missing varible spots. 
+
+Mode imputation is another method that works well for numeric variables. This imputes the mode of the column in the missing variable spots. 
+
+Zero imputation is another method that works well for numeric variables. This imputes 0 in the missing variable spots. 
+
+:::
+
+Name at least 2 **more complex** model based imputation steps that handle missingness issues. Indicate whether each step function can handle numeric, categorical, or both variable types.
+
+::: {.callout-tip icon="false"}
+## Solution
+
+KNN imputation is a more-complex imputation step to handle missingness in both categorical or numeric variables. 
+
+Tree-based imputation is also a more-complex step to handle missingness in both categorical or numeric variables. 
+
+:::
+
+The most important question we must ask when encountering missing data is “Why is the data missing?” That answer gives important information about how the missingness should be handled. If a factor variable is **missing not at random** it could be more appropriate to set all missing factor data to a new level called "unknown" rather than to impute. What is the name of the `step` and does this apply to any of our variables?
+
+::: {.callout-tip icon="false"}
+## Solution
+
+The name of this step is `step_unknown()`. This could apply to the variables `workclass` and `occupation`. The missingness in these variables could reflect a class of unemployed people. 
+
+:::
+
+
+#### Task 3
+
+Create a recipe called `recipe_basic` that predicts `income` using all variables with the following steps:
+
+  - remove variables with exactly zero variance
+  - dummy encode factor variables
+  - normalize numeric variables
+  - remove variables not appropriate for prediction
+  - impute `education_num`, `hours_per_week`, `occupation`, `workclass`, and `native_country` with **simple** imputation methods
+
+::: {.callout-tip icon="false"}
+## Solution
+
+```{r}
+#| label: task 3 ex 1
+#| eval: false
+
+recipe_basic <- recipe(income ~., data = adult_train) |>
+  step_rm(name) |>
+  step_impute_mode(occupation, workclass, native_country) |>
+  step_impute_mean(education_num, hours_per_week) |>
+  step_dummy(all_nominal_predictors()) |>
+  step_zv(all_predictors()) |>
+  step_normalize(all_numeric_predictors())
+
+```
+
+
+:::
+  
+  
+#### Task 4
+
+Let's pretend the "best model" was a simple logistic regression model. A script (`3_fit_logistic.R`) has been provided that finalizes the fit and checks its performance on the test set. All you need to do is load a few items that are indicated towards the top of the script (`adult_train`, `adult_test`, and `recipe_basic`) and then run the script. No other changes should be made to the script.^[We are glancing over the tuning and model selection process here (1) for time purposes, (2) we expect you know how to do this, and (3) the purpose of this exercise is to demonstrate odd situations you might run into.]
+
+Specify 2 *potential* issues that occur with your results.
+
+::: {.callout-tip icon="false"}
+## Solution
+
+  One potential issue with the results is that the testing data contains novel levels in `native_country` (`Honduras` and `Thailand`) that were not present in the training data. 
+  Another potential issue is that the `occupation` column contains a novel level `Armed-Forces` is not in the training data. These levels were removed and set to `NA`.
+
+:::
+
+### Exercise 2
+
+The goal of this exercise is to gain a deeper understanding of factor levels.
+
+#### Task 1
+
+When dummy encoding a factor variable with a large number of levels/categories, what are the two **filtering** steps we could implement to handle rarely occurring levels/categories?^[We used one of them in Exercise 1 recipe.] When should they be applied within our feature engineering recipe?  
+
+::: {.callout-tip icon="false"}
+## Solution
+
+The two filtering steps we could implement are `step_zv()` and `step_nzv()`. These could handle these rarely occurring levels in the dataset. 
+
+:::
+
+#### Task 2
+
+Inspect the factor variables in the `adult_train` dataset with a large number of levels/categories. Use both graphics and summary tables.
+
+::: {.callout-tip icon="false"}
+## Solution
+
+The factor variables that contain a large number of levels include education, native country, and occupation. They are inpsected below
+
+### Education
+
+The most common highest educational attainment in the dataset is HS-grad, indicating that the subject graduated form high school. The second most is some college and the third most a Bachelors degree. There are many variables representing smaller proportions of subjects that received different levels of educational attainment. These typically represent less than 5% of the population. 
+
+![Education Diagram](results/education_factor.png)
+
+
+
+|education_levels |      Freq|
+|:----------------|---------:|
+|10th             | 0.0283792|
+|11th             | 0.0348157|
+|12th             | 0.0105325|
+|1st-4th          | 0.0049737|
+|5th-6th          | 0.0070217|
+|7th-8th          | 0.0207724|
+|9th              | 0.0187244|
+|Assoc-acdm       | 0.0394968|
+|Assoc-voc        | 0.0418373|
+|Bachelors        | 0.1702750|
+|Doctorate        | 0.0111176|
+|HS-grad          | 0.3095377|
+|Masters          | 0.0459333|
+|Preschool        | 0.0011703|
+|Prof-school      | 0.0155061|
+|Some-college     | 0.2399064|
+
+
+
+
+### Native Country
+
+Most respondents are from the United States in this dataset (91% of respondents). Approximately 1.7% of the respondents reported Mexico as their country of origin. The remaining 36 countries reported represent less than 1% of the respondent population each. 
+
+![Native Country Plot](results/native_country_factor.png)
+
+
+|native_country_levels      |      Freq|
+|:--------------------------|---------:|
+|Cambodia                   | 0.0008953|
+|Canada                     | 0.0053715|
+|China                      | 0.0017905|
+|Columbia                   | 0.0026858|
+|Cuba                       | 0.0020889|
+|Dominican-Republic         | 0.0017905|
+|Ecuador                    | 0.0008953|
+|El-Salvador                | 0.0026858|
+|England                    | 0.0023873|
+|France                     | 0.0008953|
+|Germany                    | 0.0056699|
+|Greece                     | 0.0005968|
+|Guatemala                  | 0.0014921|
+|Haiti                      | 0.0026858|
+|Hong                       | 0.0011937|
+|Hungary                    | 0.0011937|
+|India                      | 0.0038794|
+|Iran                       | 0.0008953|
+|Ireland                    | 0.0005968|
+|Italy                      | 0.0014921|
+
+
+|native_country_levels      |      Freq|
+|:--------------------------|---------:|
+|Jamaica                    | 0.0023873|
+|Japan                      | 0.0014921|
+|Laos                       | 0.0005968|
+|Mexico                     | 0.0173083|
+|Nicaragua                  | 0.0008953|
+|Outlying-US(Guam-USVI-etc) | 0.0002984|
+|Peru                       | 0.0008953|
+|Philippines                | 0.0077589|
+|Poland                     | 0.0017905|
+|Portugal                   | 0.0023873|
+|Puerto-Rico                | 0.0032826|
+|Scotland                   | 0.0002984|
+|South                      | 0.0014921|
+|Taiwan                     | 0.0014921|
+|Trinadad&Tobago            | 0.0005968|
+|United-States              | 0.9140555|
+|Vietnam                    | 0.0014921|
+|Yugoslavia                 | 0.0002984|
+
+
+
+
+### Occupation
+
+The representation of occupations is somewhat more even across levels. The most common occupation was Prof-specialty, followed closely by Sales Craft-repair, Exec-managerial and Adm-clerical. The levels are fairly balanced, with Priv-house-serv the least represented at .50% of respondents.
+
+![Occupation Plot](results/occupation_factor.png)
+
+|occupation_levels |      Freq|
+|:-----------------|---------:|
+|Adm-clerical      | 0.1205873|
+|Craft-repair      | 0.1302718|
+|Exec-managerial   | 0.1265230|
+|Farming-fishing   | 0.0328022|
+|Handlers-cleaners | 0.0431115|
+|Machine-op-inspct | 0.0656045|
+|Other-service     | 0.1055920|
+|Priv-house-serv   | 0.0049984|
+|Prof-specialty    | 0.1365198|
+|Protective-serv   | 0.0196813|
+|Sales             | 0.1287098|
+|Tech-support      | 0.0312402|
+|Transport-moving  | 0.0543580|
+:::
+
+If we decided that we wanted to avoid filtering our rarely occurring levels/categories, then what is one option/alternative that we have?
+
+::: {.callout-tip icon="false"}
+## Solution
+
+One option/alternative we could use to avoid filtering rarely occurring levels is using stratified sampling early on. 
+
+:::
+
+If we have new factor levels in the testing data that are not present in the training data and we want to avoid removing these levels, what is one option/alternative that we have?
+
+::: {.callout-tip icon="false"}
+## Solution
+
+One way to avoid removing these levels could be by introducing a step_other(). 
+
+:::
+
+#### Task 3
+
+If we have missing data in variables in the testing dataset, but those variables did not have missing data in the training dataset, how can we fix this to ensure the prediction is not NA?
+
+::: {.callout-tip icon="false"}
+## Solution
+
+We could utilize imputation methods to replace the NA values in the testing set. We could use a simple approach (for example Mean/Median imputation) or a more complex model approach (for example KNN).
+
+:::
+  
+### Exercise 3
+
+We are going to now handle the issues discussed in Exercise 2 and compare a few imputation methods while fitting a single layer neural network (multilayer perceptron — [mlp](https://parsnip.tidymodels.org/reference/mlp.html)).
+
+#### Task 1
+
+Create `recipe_simple` by starting with `income` being predicted by all other variables and adding the following steps:
+
+  - remove variables with **near** zero variance
+  - dummy encode factor variables with one-hot encoding^[We will be fitting a neural network so one-hot encoding is more appropriate.]
+  - convert any factor level below 0.05 to `"other"`
+  - (optional) handle novel factor levels^[This may not be entirely necessary; a lot of times converting rare factors to `"other"` handles this naturally.]
+  - normalize numeric variables
+  - remove variables not appropriate for prediction
+  - handle known missingness with **simple** imputation methods
+  - handle potential missingness issues in the testing data by imputing all other potential variables using a **simple** imputation method
+
+::: {.callout-tip icon="false"}
+## Solution
+
+```{r}
+#| label: ex 3 task 1
+#| eval: false
+  recipe_simple <- recipe(income ~., data = adult_train) |>
+  step_rm(name) |>
+  step_impute_median(education_num, hours_per_week) |>
+  step_impute_median(all_nominal_predictors()) |>
+  step_impute_mode(all_nominal_predictors()) |>
+  step_other(threshold = .05) |> 
+  step_dummy(all_nominal_predictors(), one_hot = TRUE) |>
+  step_nzv(all_predictors()) |>
+  step_normalize(all_numeric_predictors())
+```
+
+
+:::
+
+#### Task 2
+
+Create `recipe_complex` by using the same steps as in `recipe_simple` **except**:
+
+- use linear regression to impute the numeric variables `education_num` and `hours_per_week` and 
+- use knn to impute the factor variables `occupation`, `workclass`, and `native_country`
+
+If you do not modify any settings within the imputation steps you should see the following warning: 
+
+> There were missing values in the predictor(s) used to impute; imputation did not occur.
+
+What does this warning mean/why did the imputation fail if we use the default settings?
+
+::: {.callout-tip icon="false"}
+## Solution
+
+This could indicate that the values used to impute for linear or knn methods could have been missing.
+
+:::
+
+Correct the error in the recipe (if you have not done so already) by being thoughtful about the variables you impute with. Why did you choose these variables?
+
+::: {.callout-tip icon="false"}
+## Solution
+
+```{r}
+#| label: ex 3 task 2
+#| eval: false
+
+recipe_complex <- recipe(income ~., data = adult_train) |>
+  step_rm(name) |>
+  step_impute_linear(education_num, hours_per_week, 
+                     impute_with = c("age", "capital_gain", "capital_loss", 
+                                     "fnlwgt", "marital_status", "relationship", 
+                                     "race", "sex")) |>
+  step_impute_knn(occupation, workclass, native_country, 
+                  impute_with = c("age", "capital_gain", "capital_loss", 
+                                  "fnlwgt", "marital_status", "relationship", 
+                                  "race", "sex")) |>
+  step_impute_median(all_numeric_predictors()) |>
+  step_impute_mode(all_nominal_predictors()) |>
+  step_other(threshold = .05) |> 
+  step_dummy(all_nominal_predictors(), one_hot = TRUE) |>
+  step_nzv(all_predictors()) |>
+  step_normalize(all_numeric_predictors())
+
+```
+
+
+:::
+
+#### Task 3
+
+Train 2 single layer neural network (multilayer perceptron — mlp) workflows/models. One model should use the `recipe_simple` created in Exercise 3 Task 1 and the other model should use the `recipe_complex` created in Exercise 3 Task 2. There should be no other differences between these two models.
+
+- tune `hidden_units` and `penalty` (default values a sufficient, free to change if you want)
+- `nnet` for the engine will be easiest, Alternatively, you might want to try `keras` if you can get it installed (Keras Installation).
+
+Does one of your imputation methods result in a significantly better model? 
+
+Be sure to clearly state the metric chosen, the metric mean and standard error, and the run time of each model.
+
+
+::: {.callout-tip icon="false"}
+## Solution
+The model with the better accuracy is the more complex neural network model which utilizes knn and linear regression imputing. 
+
+|wflow_id   |mean accuracy|   std_err|
+|:----------|------------:|---------:|
+|simple_nn  |    0.7999756| 0.0040574|
+|complex_nn |    0.8028021| 0.0039328|
+
+|model          | runtime (s)|
+|:--------------|-----------:|
+|Simple Recipe  |     155.213|
+|Complex Recipe |     166.702|
+
+The complex neural network model has an accuracy of .803, indicating that it predicts accurately `income` for approximately 80.3% of cases. Its runtime is slightly longer but only by about 11 seconds. Therefore, it is the superior model.
+
+:::
